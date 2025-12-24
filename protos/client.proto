@@ -1,0 +1,54 @@
+syntax = "proto3";
+package hello;
+
+// 服务定义
+service Greeter {
+  rpc queryRepositoryInfo(QueryRepositoryInfoRequest) returns (QueryRepositoryInfoResponse)
+  rpc queryChange (QueryChangeRequest) returns (stream QueryChangeReply);
+}
+
+message QueryChangeRequest {
+  int64 version = 1;
+}
+
+enum ChangeType {
+  CreateItem = 1;
+  ModifiedItem = 2;
+  DeleteItem = 3;
+}
+
+message Change {
+  ChangeType changeType = 1;
+}
+
+message QueryChangeReply {
+  int64 currentVersion = 1;
+  int64 latestVerson = 2;
+  repeated Change changes = 3;
+}
+
+message Item {
+  int64 itemID = 1;
+  int64 parentID = 2;
+  string filename = 3;
+  repeated ItemAttr attrs = 4;
+}
+
+message ItemAttr {
+
+}
+
+message QueryRepositoryInfoRequest {
+
+}
+
+message QueryRepositoryInfoResponse {
+  repeated Item items = 1;
+
+  BaseResp baseResp = 255;
+}
+
+message BaseResp {
+  string code = 1;
+  string message = 2;
+}
