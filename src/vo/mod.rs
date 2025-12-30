@@ -16,15 +16,16 @@ pub struct ItemVersionVO {
 
 #[derive(Clone, Serialize, Deserialize, Builder)]
 pub struct ItemVO {
-    id: u64,
-    parent_id: Option<u64>,
-    file_name: String,
-    file_id: Option<u64>,
-    item_version: ItemVersionVO,
-    attrs: Option<ItemAttrsVO>,
+    pub id: u64,
+    pub parent_id: Option<u64>,
+    pub file_name: String,
+    pub file_id: Option<u64>,
+    pub item_version: ItemVersionVO,
+    pub attrs: Option<ItemAttrsVO>,
+    pub childs: Vec<ItemVO>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Builder)]
 pub struct RepoInfoVO {
     repo_id: u64,
     items: Vec<ItemVO>,

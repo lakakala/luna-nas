@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use crate::db::item_version::ContentType;
 use crate::db::{item, item_version, repository};
 use crate::result::ErrorV2;
@@ -48,34 +51,106 @@ impl RepoService {
             )));
         }
 
-        // let mut all_item_version = Vec::new();
-
-        let latest_id:u64 = 0;
+        let mut latest_id: u64 = 0;
         let page_size = 0;
-       loop {
-           let db_item_versions = item_version::Entity::find()
-            .filter(
-                Condition::all().add(
-                    item_version::Column::RepositoryId
-                        .eq(repository_id)
-                        .add(item_version::Column::Deleted.eq(0))
-                        .add(item_version::Column::LatestVersion.eq(true)),
-                ),
-            )
-            .limit(100)
-            .all(&txn)
-            .await
-            .map_err(|err| ErrorV2::DBError {
-                source: err,
-                msg: format!("start transaction failed"),
-            })?;
 
-            match db_item_versions {
+        let mut item_map = HashMap::new();
+        let mut item_childs_map: HashMap<u64, Vec<_>> = HashMap::new();
+        loop {
+            let db_item_versions = item_version::Entity::find()
+                .filter(
+                    Condition::all().add(
+                        item_version::Column::RepositoryId
+                            .eq(repository_id)
+                            .add(item_version::Column::Deleted.eq(0))
+                            .add(item_version::Column::LatestVersion.eq(true))
+                            .add(item_version::Column::Id.gt(latest_id)),
+                    ),
+                )
+                .limit(100)
+                .all(&txn)
+                .await
+                .map_err(|err| ErrorV2::DBError {
+                    source: err,
+                    msg: format!("start transaction failed"),
+                })?;
 
-            };
-       }
-        
-        todo!()
+            let db_item_version_len = db_item_versions.len();
+            if db_item_version_len == 0 {
+                break;
+            }
+            latest_id = db_item_versions.last().unwrap().id;
+
+            for item_version in db_item_versions {
+                let item = vo::ItemVO::builder()
+                    .id(item_version.item_id)
+                    .file_name(item_version.file_name.clone())
+                    .maybe_parent_id(item_version.parent_id)
+                    .item_version(
+                        vo::ItemVersionVO::builder()
+                            .content_version(item_version.content_version)
+                            .meta_version(item_version.meta_version)
+                            .build(),
+                    )
+                    .maybe_attrs(Option::Some(
+                        vo::ItemAttrsVO::builder()
+                            .capabilities(item_version.capabilities)
+                            .build(),
+                    ))
+                    .childs(Vec::new())
+                    .build();
+
+                let parent_id = match item_version.parent_id {
+                    Some(parent_id) => parent_id,
+                    None => 0,
+                };
+
+                item_childs_map.entry(parent_id).or_default().push(item.id);
+
+                item_map.insert(item.id, item);
+                // if !item_childs_map.contains_key(&parent_id) {
+                //     let childs = Vec::new();
+                //     item_childs_map.insert(parent_id, childs);
+                // }
+
+                // let childs = item_childs_map.get_mut(&parent_id).unwrap();
+
+                // childs.push(item);
+            }
+
+            if db_item_version_len != page_size {
+                break;
+            }
+        }
+
+        fn nest(
+            item_id: u64,
+            item_map: &mut HashMap<u64, vo::ItemVO>,
+            item_childs_map: &HashMap<u64, Vec<u64>>,
+        ) -> Vec<vo::ItemVO> {
+            item_childs_map
+                .get(&item_id)
+                .map(|child_ids| {
+                    child_ids
+                        .iter()
+                        .filter_map(|child_id| {
+                            let mut item = item_map.remove(child_id)?;
+                            item.childs = nest(item.id, item_map, item_childs_map);
+                            Some(item)
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        }
+
+        let tree_item_list = nest(0, &mut item_map, &item_childs_map);
+
+        return Result::Ok(
+            vo::RepoInfoVO::builder()
+                .repo_id(repository_id)
+                .items(tree_item_list)
+                .build(),
+        );
     }
 
     pub async fn create_item(
@@ -253,6 +328,7 @@ impl RepoService {
                         .maybe_last_use_date(item_attrs.get_last_use_date())
                         .build(),
                 )
+                .childs(Vec::new())
                 .build(),
         );
     }

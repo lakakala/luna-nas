@@ -3,9 +3,18 @@ use crate::{services, vo};
 use axum::extract::{Json, Path, State};
 
 #[axum::debug_handler]
-pub(super) async fn get_repoinfo(Path(repo_id): Path<String>) -> Resp<vo::RepoInfoVO> {
-    todo!()
-    // return Resp::from(Result::Ok(vo::RepoInfoVO { repo_id: 1 }));
+pub(super) async fn get_repoinfo(
+    State(app_state): State<super::routes::AppState>,
+    Path(repo_id): Path<String>,
+) -> Resp<vo::RepoInfoVO> {
+    let app_ctx = app_state.get_app_ctx();
+
+    return Resp::from(
+        app_ctx
+            .get_repo_service()
+            .repository_info(repo_id.parse().unwrap())
+            .await,
+    );
 }
 
 #[axum::debug_handler]
